@@ -1,4 +1,6 @@
 ## "Simplifying GNN Performance with Low Rank Kernel Models" Implementation
+Paper link: [https://arxiv.org/abs/2310.05250](https://arxiv.org/abs/2310.05250)
+
 Dependencies: `torch`, `optuna`, `numpy`, `xarray`, `torch_geometric`, `tqdm`
 
 For Table 2 results run:
@@ -6,4 +8,4 @@ For Table 2 results run:
 
 MLP2 results can be obtained by running `mlp_run.py`
 
-Comparison of different evaluation is found in `eval_conventions.py`
+Comparison of different evaluation is run using `eval_conventions.py`
