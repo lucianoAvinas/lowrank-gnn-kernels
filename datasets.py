@@ -1,6 +1,8 @@
+import os
 import torch
 import torch_geometric
 
+from math import log
 from pathlib import Path
 
 
@@ -17,6 +19,20 @@ def get_dataset(dataset_nm, mask_type='geom_gcn'):
     elif dataset_nm in ['cornell', 'texas', 'wisconsin']:
         data = torch_geometric.datasets.WebKB('graph_data', dataset_nm)[0]
         data.edge_index = torch_geometric.utils.to_undirected(data.edge_index)
+    elif 'csbm' in dataset_nm:
+        if mask_type == 'geom_gcn':
+            raise ValueError('CSBM data does not have pre-defined split.')
+
+        _, a, b, cls_sep = dataset_nm.split('_')
+        a,b,cls_sep = float(a), float(b), float(cls_sep)
+
+        torch.manual_seed(47)
+        n = 1000
+        p,q = a*log(n)/n, b*log(n)/n
+        
+        data = torch_geometric.datasets.StochasticBlockModelDataset(os.path.join('graph_data', dataset_nm), 
+                                                                    [n,n], [[p, q],[q, p]], 
+                                                                    num_channels=2, class_sep=cls_sep)
     else:
         raise NotImplementedError(f'Dataset {dataset_nm} not yet implemented')
 

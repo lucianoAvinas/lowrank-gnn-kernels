@@ -15,7 +15,7 @@ from kernels import sobolev_cmpct, sobolev_reals, gaussian_rbf, linear_reals
 
 
 DATA_NAMES = ['cora', 'citeseer', 'pubmed', 'chameleon', 'squirrel', 
-              'actor', 'cornell', 'texas', 'wisconsin']
+              'actor', 'cornell', 'texas', 'wisconsin', 'csbm']
 
 MASKS_OPTS = ['geom_gcn', 'random', 'balanced']
 
@@ -30,6 +30,10 @@ KERNL_DICT = dict(sob_cmpct=sobolev_cmpct, sob_reals=sobolev_reals, gauss_rbf=ga
 
 
 parser = argparse.ArgumentParser(description='Set up low-rank model sweep')
+
+parser.add_argument('--csbm_params', type=float, nargs=3, 
+                    help='Sets (p,q)-CSBM parameters (a,b,cls_sep) where p=a(log n)/n, q=b(log n)/n,'
+                         'and cls_sep is mean separation between cluster features.')
 
 parser.add_argument('--reduction_range', type=int, default=(0,19,20), nargs=3,
                     help='Expects three arguments non-negative integers, ex: "--reduction_range a b c", '
@@ -114,6 +118,13 @@ if __name__ == '__main__':
 
     for opt_tuple in tqdm(itertools.product(*all_options), total=N_total):
         i, data_nm, mask_type, model_type, graph_type, kern_nm = opt_tuple
+
+        if data_nm == 'csbm':
+            if args.csbm_params is None:
+                continue
+            else:
+                a,b,cls_sep = args.csbm_params
+                data_nm = f'{data_nm}_{a}_{b}_{cls_sep}'
 
         pct = 1.0 - i/rnk_ln
         g_norm, g_shift = GRAPH_DICT[graph_type]
