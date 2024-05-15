@@ -63,7 +63,7 @@ class ACM_GCNP(ModelInterface, GCN):
 
     @staticmethod
     def get_param_opts():
-        return dict(dropout=list(range(10)))
+        return dict()
 
     @staticmethod
     def get_model_inputs(edge_data, X, y):
