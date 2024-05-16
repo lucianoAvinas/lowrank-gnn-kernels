@@ -142,7 +142,7 @@ def run_and_record(save_params, data, model_cls):
                                     study_name=str(opt_tuple))
         study.optimize(evaluate_model(data, model_cls), n_trials=100)
 
-        results = evaluate_params(data, model, study.best_trial.params)
+        results = evaluate_params(data, model_cls, study.best_trial.params)
 
         # save current results
         result_xr.loc[opt_tuple] = np.array(results)
