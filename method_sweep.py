@@ -15,7 +15,7 @@ from optuna.trial import TrialState
 
 from datasets import get_dataset
 
-from model_interfaces import ACM_GCNP
+from model_interfaces import ACM_GCNP, GPR_GNN
 
 
 DATA_NAMES = ['cora', 'citeseer', 'pubmed', 'chameleon', 'squirrel', 
@@ -25,7 +25,7 @@ MASKS_OPTS = ['geom_gcn', 'random', 'balanced']
 
 MODEL_OPTS = ['acmgcnp', 'jacobi', 'gprgnn']
 
-MODEL_DICT = dict(acmgcnp=ACM_GCNP, jacobi=None, gprgnn=None)
+MODEL_DICT = dict(acmgcnp=ACM_GCNP, jacobi=None, gprgnn=GPR_GNN)
 
 
 parser = argparse.ArgumentParser(description='Set up hyperparmeter sweep for other models')

@@ -3,7 +3,9 @@ import numpy as np
 import torch.nn as nn
 import scipy.sparse as sp
 
+from argparse import Namespace
 from acm_gnn.models import GCN
+from gpr_gnn.models import GPRGNN
 from abc import ABC, abstractmethod
 from torch_geometric.utils.convert import to_scipy_sparse_matrix
 
@@ -91,3 +93,33 @@ class ACM_GCNP(ModelInterface, GCN):
         dropout = trial.suggest_float('dropout', 0, 0.9, step=0.1)
 
         return dict(dropout=dropout)
+
+
+class GPR_GNN(ModelInterface, GPRGNN):
+    data = None
+    def __init__(self, hyper_params):
+        args = Namespace(**hyper_params)
+        args.ppnp = 'GPR_prop'
+        args.Init = 'PPR'
+        args.K = 10
+        args.dropout = 0.5
+        args.hidden = 64
+        args.Gamma = None
+
+        GPRGNN.__init__(self, GPR_GNN.data, args)
+
+    @staticmethod
+    def get_param_opts():
+        return dict()
+
+    @staticmethod
+    def get_model_inputs(data):
+        GPR_GNN.data = data
+        return data
+
+    @staticmethod
+    def suggest_values(trial):
+        alpha = trial.suggest_categorical('alpha', [0.1, 0.2, 0.5, 0.9])
+        dprate = trial.suggest_float('dprate', 0, 0.9, step=0.1)
+
+        return dict(alpha=alpha, dprate=dprate)
