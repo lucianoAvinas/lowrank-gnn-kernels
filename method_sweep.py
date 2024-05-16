@@ -56,7 +56,7 @@ def accuracy(pred, label):
 
 def evaluate_params(data, model_cls, hyper_params, trial=None):
     inp, y, masks = data
-    device = X.device
+    device = y.device
 
     hyper_params = dict(hyper_params)
     lr = hyper_params.pop('lr')
@@ -192,15 +192,12 @@ if __name__ == '__main__':
         if new_data:    
             data = get_dataset(data_nm, mask_type).to(device)
 
-            #A = torch_geometric.utils.to_dense_adj(data.edge_index).squeeze()
-
-            X,y = data.x, data.y
             data_mask = (data.train_mask.T, data.val_mask.T, data.test_mask.T)
 
 
         save_params = (result_xr, opt_tuple, save_name)
-        inp = model_cls.get_model_inputs(data.edge_index, X, y)   ####
+        inp = model_cls.get_model_inputs(data)   ####
 
-        run_and_record(save_params, (inp, y, data_mask), model_cls)
+        run_and_record(save_params, (inp, data.y, data_mask), model_cls)
 
         last_opts = opt_tuple

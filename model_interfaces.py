@@ -16,7 +16,7 @@ class ModelInterface(ABC):
 
     @staticmethod
     @abstractmethod
-    def get_model_inputs(edge_data, X, y):
+    def get_model_inputs(data):
         pass
 
     @staticmethod
@@ -66,7 +66,9 @@ class ACM_GCNP(ModelInterface, GCN):
         return dict()
 
     @staticmethod
-    def get_model_inputs(edge_data, X, y):
+    def get_model_inputs(data):
+        edge_data, X, y = data.edge_index, data.x, data.y
+
         ACM_GCNP.n = len(y)
         ACM_GCNP.d = X.shape[1]
         ACM_GCNP.c = len(y.unique())
