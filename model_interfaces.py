@@ -6,7 +6,10 @@ import scipy.sparse as sp
 from argparse import Namespace
 from acm_gnn.models import GCN
 from gpr_gnn.models import GPRGNN
+from jacobi_conv.models import Gmodel, Combination, Seq, TensorMod
+from jacobi_conv import PolyConv
 from abc import ABC, abstractmethod
+from functools import partial
 from torch_geometric.utils.convert import to_scipy_sparse_matrix
 
 
@@ -14,16 +17,20 @@ class ModelInterface(ABC):
     @staticmethod
     @abstractmethod
     def get_param_opts():
+        # accounts for multiple hyperparam configs when testing
+        # different model variants 
         pass
 
     @staticmethod
     @abstractmethod
     def get_model_inputs(data):
+        # conforms data to input signature expected by the model
         pass
 
     @staticmethod
     @abstractmethod
     def suggest_values(trial):
+        # suggests hyperparameters for optuna trial
         pass
 
 
@@ -123,3 +130,48 @@ class GPR_GNN(ModelInterface, GPRGNN):
         dprate = trial.suggest_float('dprate', 0, 0.9, step=0.1)
 
         return dict(alpha=alpha, dprate=dprate)
+
+
+class Jacobi_Conv(ModelInterface, Gmodel):
+    x = None
+    output_channels = None
+    def __init__(self, hyper_params):
+        emb = Seq([
+            TensorMod(Jacobi_Conv.x),
+            nn.Dropout(p=hyper_params['dpb']),
+            nn.Linear(Jacobi_Conv.x.shape[1], Jacobi_Conv.output_channels),
+            nn.Dropout(hyper_params['dpt'], inplace=True)
+        ])
+
+        conv_fn = partial(PolyConv.JacobiConv, a=hyper_params['a'], b=hyper_params['b'])
+        conv = PolyConv.PolyConvFrame(conv_fn, depth=10, aggr='gcn', 
+                                      alpha=hyper_params['alpha'], fixed=False)
+        comb = Combination(Jacobi_Conv.output_channels, 11, sole=False)
+   
+
+        Gmodel.__init__(self, emb, conv, comb)
+
+    @staticmethod
+    def get_param_opts():
+        return dict()
+
+    @staticmethod
+    def get_model_inputs(data):
+        Jacobi_Conv.x = data.x
+        Jacobi_Conv.output_channels = data.num_classes
+
+        ei = data.edge_index
+        ea = torch.ones(ei.shape[1]).to(data.y.device)
+        msk = torch.ones_like(data.y, dtype=bool)
+
+        return (ei, ea, msk)
+
+    @staticmethod
+    def suggest_values(trial):
+        alpha = trial.suggest_float('alpha', 0.5, 2.0, step=0.5)
+        a = trial.suggest_float('a', -1.0, 2.0, step=0.25)
+        b = trial.suggest_float('b', -0.5, 2.0, step=0.25)
+        dpb = trial.suggest_float("dpb", 0.0, 0.9, step=0.1)
+        dpt = trial.suggest_float("dpt", 0.0, 0.9, step=0.1)
+
+        return dict(alpha=alpha, a=a, b=b, dpb=dpb, dpt=dpt)
