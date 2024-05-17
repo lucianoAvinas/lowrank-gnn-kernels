@@ -29,10 +29,15 @@ def get_dataset(dataset_nm, mask_type='geom_gcn'):
         torch.manual_seed(47)
         n = 1000
         p,q = a*log(n)/n, b*log(n)/n
+
+        d = 1
+        x = torch.stack((cls_sep+torch.randn(2*n,d), -cls_sep+torch.randn(2*n,d)))
         
         data = torch_geometric.datasets.StochasticBlockModelDataset(os.path.join('graph_data', dataset_nm), 
                                                                     [n,n], [[p, q],[q, p]], 
-                                                                    num_channels=2, class_sep=cls_sep)
+                                                                    num_channels=1, n_clusters_per_class=1,
+                                                                    class_sep=cls_sep)[0]
+        data.x = x[data.y, torch.arange(2*n)]
     else:
         raise NotImplementedError(f'Dataset {dataset_nm} not yet implemented')
 

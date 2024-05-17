@@ -122,7 +122,9 @@ class GPR_GNN(ModelInterface, GPRGNN):
     @staticmethod
     def get_model_inputs(data):
         GPR_GNN.data = data
-        return data
+        GPR_GNN.data.num_features = data.x.shape[1]
+        GPR_GNN.data.num_classes = len(data.y.unique())
+        return (data,)
 
     @staticmethod
     def suggest_values(trial):
@@ -158,7 +160,7 @@ class Jacobi_Conv(ModelInterface, Gmodel):
     @staticmethod
     def get_model_inputs(data):
         Jacobi_Conv.x = data.x
-        Jacobi_Conv.output_channels = data.num_classes
+        Jacobi_Conv.output_channels = len(data.y.unique())
 
         ei = data.edge_index
         ea = torch.ones(ei.shape[1]).to(data.y.device)
