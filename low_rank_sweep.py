@@ -15,7 +15,7 @@ from kernels import sobolev_cmpct, sobolev_reals, gaussian_rbf, linear_reals
 
 
 DATA_NAMES = ['cora', 'citeseer', 'pubmed', 'chameleon', 'squirrel', 
-              'actor', 'cornell', 'texas', 'wisconsin', 'csbm']
+              'actor', 'cornell', 'texas', 'wisconsin', 'csbm', 'rpdg']
 
 MASKS_OPTS = ['geom_gcn', 'random', 'balanced']
 
@@ -95,6 +95,14 @@ if __name__ == '__main__':
 
     rnk_st, rnk_en, rnk_ln = args.reduction_range
     rank_steps = list(range(rnk_st, rnk_en+1))
+
+    if 'rdpg' in args.datasets:
+        args.datasets.remove('rdpg')
+        g_noise = [1e-5, 1e-5, 1e-4, 1e-3, 1e-1]
+        f_noise = [1/32, 1/16, 1/8, 1/4, 1/2]
+
+        args.datasets += [f'rdpg_{gn}_{fn}' for fn in f_noise for gn in g_noise]
+
     all_options = (rank_steps, args.datasets, args.masks, args.models, args.graphs, args.kernels)
 
     save_name = Path('sweep_results') / f'{args.save_name}.nc'

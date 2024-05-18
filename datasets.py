@@ -1,10 +1,27 @@
 import os
 import torch
+import numpy as np
 import torch_geometric
 
 from math import log
 from pathlib import Path
 
+
+def get_squirrel_RDPG(g_noise, f_noise):
+    data = torch_geometric.datasets.WikipediaNetwork('graph_data', 'squirrel')[0]
+
+    n = len(data.y)
+    d = 2000
+
+    U, S, V = torch.svd_lowrank(torch_geometric.utils.to_dense_adj(data.edge_index).squeeze(), d)
+
+    P = torch.clip((U * S) @ V.T + g_noise * torch.randn(n,n), 0, 1)
+    P.fill_diagonal_(0)
+
+    data.edge_index = (torch.rand((n,n)) < P).nonzero().t().contiguous()
+    data.x = torch.logical_xor(data.x, torch.rand(data.x.shape) < f_noise).float()
+
+    return data
 
 def get_dataset(dataset_nm, mask_type='geom_gcn'):
     mask_type = mask_type.lower()
@@ -38,6 +55,10 @@ def get_dataset(dataset_nm, mask_type='geom_gcn'):
                                                                     num_channels=1, n_clusters_per_class=1,
                                                                     class_sep=cls_sep)[0]
         data.x = x[data.y, torch.arange(2*n)]
+    elif 'rdpg' in dataset_nm:
+        _, g_noise, f_noise = dataset_nm.split('_')
+        g_noise,f_noise = float(g_noise), float(f_noise)
+        data = get_squirrel_RDPG(g_noise, f_noise)
     else:
         raise NotImplementedError(f'Dataset {dataset_nm} not yet implemented')
 

@@ -19,7 +19,7 @@ from model_interfaces import ACM_GCNP, GPR_GNN, Jacobi_Conv
 
 
 DATA_NAMES = ['cora', 'citeseer', 'pubmed', 'chameleon', 'squirrel', 
-              'actor', 'cornell', 'texas', 'wisconsin', 'csbm']
+              'actor', 'cornell', 'texas', 'wisconsin', 'csbm', 'rdpg']
 
 MASKS_OPTS = ['geom_gcn', 'random', 'balanced']
 
@@ -157,6 +157,13 @@ if __name__ == '__main__':
         model_cls = MODEL_DICT[args.model]
     except KeyError:
         raise NotImplementedError(f'Interface not yet implemented for {args.model}')
+
+    if 'rdpg' in args.datasets:
+        args.datasets.remove('rdpg')
+        g_noise = [1e-5, 1e-5, 1e-4, 1e-3, 1e-1]
+        f_noise = [1/32, 1/16, 1/8, 1/4, 1/2]
+
+        args.datasets += [f'rdpg_{gn}_{fn}' for fn in f_noise for gn in g_noise]
 
     option_dict = dict(data=args.datasets, mask=args.masks)
 
