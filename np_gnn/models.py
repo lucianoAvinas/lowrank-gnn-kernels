@@ -33,35 +33,43 @@ def get_spectral_decomp(A, is_symm=False):
     return U, S, Vh
             
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 class NPGNN(nn.Module):
     def __init__(self, A, n_feats, n_out, 
-                 spec_train=True, kern_fn = None, 
-                 norm=False, Shift=False, pct=1):
+                 spec_train=True, kern_fn=None, 
+                 norm=False, shift=False, pct=1,
+                 use_sqrt_K=False):
         super().__init__()
 
         # Get the network matrix and its spectral decomposition
         is_symm = torch.all(A == A.T)
-        self.M = get_network_matrix(A, norm=norm, shift=Shift, is_symm=is_symm)
+        self.M = get_network_matrix(A, norm=norm, shift=shift, is_symm=is_symm)
         self.U, self.S, self.Vh = get_spectral_decomp(self.M, is_symm=is_symm)
 
         # Truncate the spectral decomposition
         if pct < 1:
             abs_S = abs(self.S)
             eig_mask = abs_S >= torch.quantile(abs_S, 1 - pct)
-            self.U, self.S, self.Vh = self.U[:,eig_mask], self.S[eig_mask], self.Vh[eig_mask]
+            self.U, self.S, self.Vh = self.U[:, eig_mask], self.S[eig_mask], self.Vh[eig_mask]
 
         # Should we train the spectral filter?
         if spec_train:
             r = self.U.shape[1]
             self.alpha = nn.Parameter(torch.randn(r, 1) / torch.sqrt(torch.tensor(r)))
-            # self.alpha = nn.Parameter(torch.randn(r) / torch.sqrt(torch.tensor(r)))
         else:
-            self.alpha = None # effectively the all-ones vector
+            self.alpha = None  # effectively the all-ones vector
 
         if kern_fn is not None:
-            self.K = kern_fn(self.S, self.S) # will be an r x r matrix
+            self.K = kern_fn(self.S, self.S)  # will be an r x r matrix
+            if use_sqrt_K:
+               # Compute the matrix square root of K
+                eigvals, eigvecs = torch.linalg.eigh(self.K)
+                self.K = eigvecs @ torch.diag(torch.sqrt(eigvals)) @ eigvecs.T
         else:
-            self.K = None # effectively identity
+            self.K = None  # effectively identity
 
         self.W_in = nn.Linear(n_feats, n_out)
 

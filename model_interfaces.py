@@ -66,7 +66,7 @@ class NPGNN_AB(ModelInterface, NPGNN):
     adj = None
     n_feats = None
     n_out = None
-    def __init__(self, hyper_params = {'spec_train':True, 'kern_fn':None, 'norm':False, 'Shift':False, 'pct':1}):
+    def __init__(self, hyper_params = {'spec_train':True, 'kern_fn':None, 'norm':False, 'shift':False, 'pct':1, 'use_sqrt_K':False}):
         NPGNN.__init__(self, NPGNN_AB.adj, NPGNN_AB.n_feats, NPGNN_AB.n_out, **hyper_params)
 
     @staticmethod
