@@ -23,9 +23,11 @@ def get_data(dataset_nm, mask_type='geom_gcn'):
 def accuracy(pred, label):
     return (pred.argmax(axis=1) == label).mean(dtype=float).item()
 
-def train(model, data, rep, n_iter=1500, lr=1e-2, wd=5e-4):
+def train_model_class(model_class, hyper_params, data, rep, n_iter=1500, lr=1e-2, wd=5e-4):
     device = data.get_device()
-    model = model.to(device)
+    model_inputs = model_class.get_model_inputs(data)
+    model = model_class(hyper_params).to(device)
+    # model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
     tr_msk = data.masks['train'][:, rep]
@@ -39,13 +41,13 @@ def train(model, data, rep, n_iter=1500, lr=1e-2, wd=5e-4):
         optimizer.zero_grad()
         model.train()
 
-        out = model(data.x)
+        out = model(*model_inputs)
         F.cross_entropy(out[tr_msk], y_tr).backward()
         optimizer.step()
 
         with torch.no_grad():
             model.eval()
-            out = model(data.x)
+            out = model(*model_inputs)
 
             val_acc = accuracy(out[vl_msk], y_vl)
 

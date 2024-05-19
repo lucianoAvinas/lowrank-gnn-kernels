@@ -8,6 +8,7 @@ from acm_gnn.models import GCN
 from gpr_gnn.models import GPRGNN
 from jacobi_conv.models import Gmodel, Combination, Seq, TensorMod
 from jacobi_conv import PolyConv
+from np_gnn.models import NPGNN
 from abc import ABC, abstractmethod
 from functools import partial
 from torch_geometric.utils.convert import to_scipy_sparse_matrix
@@ -60,6 +61,29 @@ def sparse_mx_to_torch_sparse_tensor(sparse_mx):
     shape = torch.Size(sparse_mx.shape)
     return torch.sparse.FloatTensor(indices, values, shape)
 
+
+class NPGNN_AB(ModelInterface, NPGNN):
+    adj = None
+    n_feats = None
+    n_out = None
+    def __init__(self, hyper_params = {'spec_train':True, 'kern_fn':None, 'norm':False, 'Shift':False, 'pct':1}):
+        NPGNN.__init__(self, NPGNN_AB.adj, NPGNN_AB.n_feats, NPGNN_AB.n_out, **hyper_params)
+
+    @staticmethod
+    def get_param_opts():
+        return dict()
+
+    @staticmethod
+    def get_model_inputs(data):
+        NPGNN_AB.adj = data.get_adjacency_matrix().to_dense()
+        NPGNN_AB.n_feats = data.x.shape[1]
+        NPGNN_AB.n_out = len(data.y.unique())
+
+        return [data.x]
+
+    @staticmethod
+    def suggest_values(trial):
+        return dict()
 
 class ACM_GCNP(ModelInterface, GCN):
     n = None
