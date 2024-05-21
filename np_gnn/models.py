@@ -56,14 +56,15 @@ class NPGNN(nn.Module):
             self.U, self.S, self.Vh = self.U[:, eig_mask], self.S[eig_mask], self.Vh[eig_mask]
 
         # Should we train the spectral filter?
-        if spec_train:
-            r = self.U.shape[1]
+        r = self.U.shape[1]
+        if spec_train:   
             self.alpha = nn.Parameter(torch.randn(r, 1) / torch.sqrt(torch.tensor(r)))
         else:
             self.alpha = None  # effectively the all-ones vector
 
         if kern_fn is not None:
             self.K = kern_fn(self.S, self.S)  # will be an r x r matrix
+            # self.K = kern_fn(self.S, self.S) / r  # will be an r x r matrix
             if use_sqrt_K:
                # Compute the matrix square root of K
                 eigvals, eigvecs = torch.linalg.eigh(self.K)

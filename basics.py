@@ -61,4 +61,4 @@ def train_model_class(model_class, hyper_params, data, rep, n_iter=1500, lr=1e-2
         if early_it == 200:
             break
 
-    return best_acc, test_acc, i
+    return best_acc, test_acc, i, model
