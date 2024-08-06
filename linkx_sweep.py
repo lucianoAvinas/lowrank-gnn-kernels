@@ -72,7 +72,7 @@ full_data = dataset[0]
 
 # Subsample the graph
 n = 2000  # number of nodes to sample
-data = subsample_graph(full_data, n)
+data = subsample_graph(full_data, n).to(device)
 
 # Create masks for train/val/test split
 data = ExtendedData.from_dict(data.to_dict())
