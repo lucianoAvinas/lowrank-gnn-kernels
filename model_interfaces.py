@@ -108,7 +108,7 @@ class ACM_GCNP(ModelInterface, GCN):
 
         device = y.device
 
-        adj_low_unnormalized = to_scipy_sparse_matrix(edge_data.to('cpu'))
+        adj_low_unnormalized = to_scipy_sparse_matrix(edge_data.to('cpu'), num_nodes=ACM_GCNP.n)
         adj_low = normalize_tensor(sp.identity(ACM_GCNP.n) + adj_low_unnormalized)
         adj_high = sp.identity(ACM_GCNP.n) - adj_low
         
