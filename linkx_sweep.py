@@ -7,6 +7,8 @@ import optuna
 from optuna.trial import TrialState
 import json
 import networkx as nx
+import time
+import os
 
 from model_interfaces import ACM_GCNP, NPGNN_AB
 from basics import train_model_class
@@ -38,19 +40,24 @@ def get_hyper_params(model_class, trial):
 def train_model_with_reps(model_class, hyper_params, data, n_rep, n_iter=1500, lr=1e-2, wd=5e-4):
     val_results = []
     tst_results = []
+    total_time = 0
     for rep in range(n_rep):
+        start_time = time.time()
         best_acc, test_acc, _, _ = train_model_class(model_class, hyper_params, data, rep, n_iter, lr, wd)
+        end_time = time.time()
+        total_time += end_time - start_time
         val_results.append(best_acc)
         tst_results.append(test_acc)
     mean_val = np.mean(val_results)
     std_val = np.std(val_results)
     mean_tst = np.mean(tst_results)
     std_tst = np.std(tst_results)
-    return mean_val, std_val, mean_tst, std_tst
+    avg_time = total_time / n_rep
+    return mean_val, std_val, mean_tst, std_tst, avg_time
 
 def objective(trial, model_class, data, n_iter, lr, wd):
     hyper_params = get_hyper_params(model_class, trial)
-    mean_val, _, _, _ = train_model_with_reps(model_class, hyper_params, data, n_rep=1, n_iter=n_iter, lr=lr, wd=wd)
+    mean_val, _, _, _, _ = train_model_with_reps(model_class, hyper_params, data, n_rep=1, n_iter=n_iter, lr=lr, wd=wd)
     return mean_val
 
 def subsample_graph(data, num_nodes):
@@ -66,25 +73,22 @@ def subsample_graph(data, num_nodes):
     
     return Data(x=x, edge_index=edge_index, y=y)
 
-# Load LINKX dataset
-dataset = LINKXDataset(root='./data', name='genius')
-full_data = dataset[0]
+def run_experiment(dataset_name, n, lr, wd, n_iter, final_n_rep):
+    # Load LINKX dataset
+    dataset = LINKXDataset(root='./data', name=dataset_name)
+    full_data = dataset[0]
 
-# Subsample the graph
-n = 2000  # number of nodes to sample
-data = subsample_graph(full_data, n).to(device)
+    # Subsample the graph
+    data = subsample_graph(full_data, n)
 
-# Create masks for train/val/test split
-data = ExtendedData.from_dict(data.to_dict())
-data.create_masks('balanced')
+    # Create masks for train/val/test split
+    data = ExtendedData.from_dict(data.to_dict())
+    data.create_masks('balanced')
 
-if __name__ == '__main__':
-    lr = 1e-2
-    wd = 5e-4
-    n_iter = 1500
-    final_n_rep = 10
+    # Move data to device
+    data = data.to(device)
+
     results = {}
-
     models = [{'model_class': NPGNN_AB}, {'model_class': ACM_GCNP}]
 
     for model in models:
@@ -114,7 +118,7 @@ if __name__ == '__main__':
             print(f"    {key}: {value}")
 
         best_hyper_params = get_hyper_params(model_class, trial)
-        mean_val, std_val, mean_tst, std_tst = train_model_with_reps(
+        mean_val, std_val, mean_tst, std_tst, avg_time = train_model_with_reps(
             model_class, best_hyper_params, data, n_rep=final_n_rep, n_iter=n_iter, lr=lr, wd=wd
         )
 
@@ -123,13 +127,48 @@ if __name__ == '__main__':
             'mean_val': mean_val,
             'std_val': std_val,
             'mean_tst': mean_tst,
-            'std_tst': std_tst
+            'std_tst': std_tst,
+            'avg_training_time': avg_time
         }
 
-        print(f"\nBest {model_class.__name__} - val = {mean_val:.3f} ± {std_val:.3f}, tst = {mean_tst:.3f} ± {std_tst:.3f}")
+        print(f"\nBest {model_class.__name__} - val = {mean_val:.3f} ± {std_val:.3f}, tst = {mean_tst:.3f} ± {std_tst:.3f}, time = {avg_time:.2f} s")
 
-    # Save results to a JSON file
-    with open('results_linkx_genius.json', 'w') as f:
-        json.dump(results, f, indent=4)
+    return results
 
-    print("\nResults saved to 'results_linkx_genius.json'")
+if __name__ == '__main__':
+    lr = 1e-2
+    wd = 5e-4
+    n_iter = 1500
+    final_n_rep = 10
+    
+    datasets = ['genius', 'penn94', 'cornell5','johnshopkins55']  # Add or remove datasets as needed
+    n_values = [2000, 5000]  # Add or remove sample sizes as needed
+
+    results_file = 'linkx_results.json'
+
+    # Load existing results if file exists
+    if os.path.exists(results_file):
+        with open(results_file, 'r') as f:
+            all_results = json.load(f)
+    else:
+        all_results = {}
+
+    for dataset_name in datasets:
+        if dataset_name not in all_results:
+            all_results[dataset_name] = {}
+        
+        for n in n_values:
+            if str(n) not in all_results[dataset_name]:
+                print(f"\nRunning experiment for {dataset_name} with n = {n}")
+                results = run_experiment(dataset_name, n, lr, wd, n_iter, final_n_rep)
+                all_results[dataset_name][str(n)] = results
+                
+                # Save results after each experiment
+                with open(results_file, 'w') as f:
+                    json.dump(all_results, f, indent=4)
+                
+                print(f"\nResults for {dataset_name} with n = {n} saved to '{results_file}'")
+            else:
+                print(f"\nExperiment for {dataset_name} with n = {n} already exists in results file. Skipping.")
+
+    print(f"\nAll experiments completed. Results saved to '{results_file}'")
