@@ -46,6 +46,7 @@ class NPGNN(nn.Module):
 
         # Get the network matrix and its spectral decomposition
         is_symm = torch.all(A == A.T)
+        print(is_symm)
         self.M = get_network_matrix(A, norm=norm, shift=shift, is_symm=is_symm)
         self.U, self.S, self.Vh = get_spectral_decomp(self.M, is_symm=is_symm)
 
@@ -76,11 +77,12 @@ class NPGNN(nn.Module):
 
     def forward(self, X):
         out = self.W_in(X)
+        out2 = self.M @ out
 
         if self.alpha is not None:
             eigs = self.alpha if self.K is None else self.K @ self.alpha
-            out = self.U @ (eigs * (self.Vh @ out))
+            out = self.U @ (eigs * (self.Vh @ out)) + out2
         else:
             out = self.M @ out 
 
-        return out
+        return out 

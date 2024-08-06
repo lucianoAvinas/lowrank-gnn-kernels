@@ -100,7 +100,7 @@ class ExtendedData(torch_geometric.data.Data):
             ))
 
         fig.update_layout(
-            width=800,
+            width=700,
             height=600,
             margin=dict(l=0, r=0, b=0, t=0),
             scene=dict(
@@ -109,7 +109,8 @@ class ExtendedData(torch_geometric.data.Data):
                 zaxis=dict(title='Z1')
             )
         )
-        fig.show()
+        # fig.show()
+        return fig
 
 
     def create_masks(self, mask_type='geom_gcn'):
