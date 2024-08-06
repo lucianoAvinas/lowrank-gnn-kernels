@@ -9,13 +9,23 @@ import json
 import networkx as nx
 import time
 import os
+import random
 
 from model_interfaces import ACM_GCNP, NPGNN_AB
 from basics import train_model_class
 from kernels import sobolev_reals, gaussian_rbf
 from torch_geometric.datasets import LINKXDataset
 
-torch.manual_seed(123)
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+GLOBAL_SEED = 42
+set_seed(GLOBAL_SEED)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -37,11 +47,12 @@ def get_hyper_params(model_class, trial):
         hyper_params = {'dropout': dropout}
     return hyper_params
 
-def train_model_with_reps(model_class, hyper_params, data, n_rep, n_iter=1500, lr=1e-2, wd=5e-4):
+def train_model_with_reps(model_class, hyper_params, data, n_rep, n_iter=1500, lr=1e-2, wd=5e-4, seed=GLOBAL_SEED):
     val_results = []
     tst_results = []
     total_time = 0
     for rep in range(n_rep):
+        set_seed(seed + rep)  # Use a different seed for each repetition
         start_time = time.time()
         best_acc, test_acc, _, _ = train_model_class(model_class, hyper_params, data, rep, n_iter, lr, wd)
         end_time = time.time()
@@ -55,15 +66,17 @@ def train_model_with_reps(model_class, hyper_params, data, n_rep, n_iter=1500, l
     avg_time = total_time / n_rep
     return mean_val, std_val, mean_tst, std_tst, avg_time
 
-def objective(trial, model_class, data, n_iter, lr, wd):
+def objective(trial, model_class, data, n_iter, lr, wd, seed):
+    set_seed(seed + trial.number)  # Use a different seed for each trial
     hyper_params = get_hyper_params(model_class, trial)
-    mean_val, _, _, _, _ = train_model_with_reps(model_class, hyper_params, data, n_rep=1, n_iter=n_iter, lr=lr, wd=wd)
+    mean_val, _, _, _, _ = train_model_with_reps(model_class, hyper_params, data, n_rep=1, n_iter=n_iter, lr=lr, wd=wd, seed=seed)
     return mean_val
 
-def subsample_graph(data, num_nodes):
+def subsample_graph(data, num_nodes, seed=GLOBAL_SEED):
+    rng = random.Random(seed)
     G = nx.Graph()
     G.add_edges_from(data.edge_index.t().tolist())
-    subG = nx.Graph(G.subgraph(np.random.choice(G.nodes(), num_nodes, replace=False)))
+    subG = nx.Graph(G.subgraph(rng.sample(list(G.nodes()), num_nodes)))
     
     node_map = {old: new for new, old in enumerate(subG.nodes())}
     edge_index = torch.tensor([[node_map[u], node_map[v]] for u, v in subG.edges()]).t()
@@ -73,13 +86,20 @@ def subsample_graph(data, num_nodes):
     
     return Data(x=x, edge_index=edge_index, y=y)
 
-def run_experiment(dataset_name, n, lr, wd, n_iter, final_n_rep):
+def run_experiment(dataset_name, n, lr, wd, n_iter, final_n_rep, seed=GLOBAL_SEED):
+    set_seed(seed)
+    
     # Load LINKX dataset
-    dataset = LINKXDataset(root='./data', name=dataset_name)
-    full_data = dataset[0]
+    if dataset_name == 'pokec':
+        full_data = torch.load('./data/pokec.pt')
+    if dataset_name == 'snap-patents':
+        full_data = torch.load('./data/snap-patents.pt')
+    else:
+        dataset = LINKXDataset(root='./data', name=dataset_name)
+        full_data = dataset[0]
 
     # Subsample the graph
-    data = subsample_graph(full_data, n)
+    data = subsample_graph(full_data, n, seed=seed)
 
     # Create masks for train/val/test split
     data = ExtendedData.from_dict(data.to_dict())
@@ -93,9 +113,9 @@ def run_experiment(dataset_name, n, lr, wd, n_iter, final_n_rep):
 
     for model in models:
         model_class = model['model_class']
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=seed))
         try:
-            study.optimize(lambda trial: objective(trial, model_class, data, n_iter, lr, wd), n_trials=50)
+            study.optimize(lambda trial: objective(trial, model_class, data, n_iter, lr, wd, seed), n_trials=50)
         except Exception as e:
             print(f"Error during optimization for {model_class.__name__}")
             print(f"Exception: {e}")
@@ -119,7 +139,7 @@ def run_experiment(dataset_name, n, lr, wd, n_iter, final_n_rep):
 
         best_hyper_params = get_hyper_params(model_class, trial)
         mean_val, std_val, mean_tst, std_tst, avg_time = train_model_with_reps(
-            model_class, best_hyper_params, data, n_rep=final_n_rep, n_iter=n_iter, lr=lr, wd=wd
+            model_class, best_hyper_params, data, n_rep=final_n_rep, n_iter=n_iter, lr=lr, wd=wd, seed=seed
         )
 
         results[model_class.__name__] = {
@@ -141,8 +161,8 @@ if __name__ == '__main__':
     n_iter = 1500
     final_n_rep = 10
     
-    datasets = ['genius', 'penn94', 'cornell5','johnshopkins55']  # Add or remove datasets as needed
-    n_values = [2000, 5000]  # Add or remove sample sizes as needed
+    datasets = ['genius', 'pokec','snap-patents']
+    n_values = [2000, 5000, 10000]
 
     results_file = 'linkx_results.json'
 
@@ -160,7 +180,7 @@ if __name__ == '__main__':
         for n in n_values:
             if str(n) not in all_results[dataset_name]:
                 print(f"\nRunning experiment for {dataset_name} with n = {n}")
-                results = run_experiment(dataset_name, n, lr, wd, n_iter, final_n_rep)
+                results = run_experiment(dataset_name, n, lr, wd, n_iter, final_n_rep, seed=GLOBAL_SEED)
                 all_results[dataset_name][str(n)] = results
                 
                 # Save results after each experiment
