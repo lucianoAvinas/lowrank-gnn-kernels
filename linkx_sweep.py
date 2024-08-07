@@ -72,17 +72,38 @@ def objective(trial, model_class, data, n_iter, lr, wd, seed):
     mean_val, _, _, _, _ = train_model_with_reps(model_class, hyper_params, data, n_rep=1, n_iter=n_iter, lr=lr, wd=wd, seed=seed)
     return mean_val
 
-def subsample_graph(data, num_nodes, seed=GLOBAL_SEED):
+def stratified_subsample_graph(data, num_nodes, seed=GLOBAL_SEED):
     rng = random.Random(seed)
     G = nx.Graph()
     G.add_edges_from(data.edge_index.t().tolist())
-    subG = nx.Graph(G.subgraph(rng.sample(list(G.nodes()), num_nodes)))
+    
+    # Count the number of nodes for each class
+    unique, counts = np.unique(data.y.numpy(), return_counts=True)
+    class_counts = dict(zip(unique, counts))
+    
+    # Calculate the number of nodes to sample from each class
+    total_nodes = len(data.y)
+    class_samples = {cls: int(num_nodes * (count / total_nodes)) for cls, count in class_counts.items()}
+    
+    # Adjust for rounding errors
+    remaining = num_nodes - sum(class_samples.values())
+    for cls in rng.sample(list(class_samples.keys()), remaining):
+        class_samples[cls] += 1
+    
+    # Sample nodes for each class
+    sampled_nodes = []
+    for cls, sample_size in class_samples.items():
+        class_nodes = (data.y == cls).nonzero().view(-1).tolist()
+        sampled_nodes.extend(rng.sample(class_nodes, sample_size))
+    
+    # Create subgraph
+    subG = nx.Graph(G.subgraph(sampled_nodes))
     
     node_map = {old: new for new, old in enumerate(subG.nodes())}
     edge_index = torch.tensor([[node_map[u], node_map[v]] for u, v in subG.edges()]).t()
     
-    x = data.x[list(subG.nodes())]
-    y = data.y[list(subG.nodes())]
+    x = data.x[sampled_nodes]
+    y = data.y[sampled_nodes]
     
     return Data(x=x, edge_index=edge_index, y=y)
 
@@ -92,14 +113,15 @@ def run_experiment(dataset_name, n, lr, wd, n_iter, final_n_rep, seed=GLOBAL_SEE
     # Load LINKX dataset
     if dataset_name == 'pokec':
         full_data = torch.load('./data/pokec.pt')
-    if dataset_name == 'snap-patents':
+        print("Loaded pokec")
+    elif dataset_name == 'snap-patents':
         full_data = torch.load('./data/snap-patents.pt')
     else:
         dataset = LINKXDataset(root='./data', name=dataset_name)
         full_data = dataset[0]
 
-    # Subsample the graph
-    data = subsample_graph(full_data, n, seed=seed)
+    # Subsample the graph using stratified sampling
+    data = stratified_subsample_graph(full_data, n, seed=seed)
 
     # Create masks for train/val/test split
     data = ExtendedData.from_dict(data.to_dict())
@@ -161,8 +183,10 @@ if __name__ == '__main__':
     n_iter = 1500
     final_n_rep = 10
     
-    datasets = ['genius', 'pokec','snap-patents']
-    n_values = [2000, 5000, 10000]
+    # datasets = ['genius', 'pokec','snap-patents']
+    # n_values = [2000, 5000, 10000, 20000]
+    datasets = ['snap-patents']
+    n_values = [2000]
 
     results_file = 'linkx_results.json'
 
