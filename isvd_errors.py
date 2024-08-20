@@ -19,6 +19,9 @@ parser.add_argument('--n_vecs', type=int, default=1000,
 parser.add_argument('--max_iter_power', type=int, default=6, 
                     help='Defines max iteration as 2**"max_iter"')
 
+parser.add_argument('--gpu_reduction', action='store_true',
+                    help='Run svd reduction on GPU. May be memory intensive for large graphs.')
+
 parser.add_argument('--graphs', type=str, default='none',
                     help='Determines graph matrix. "none" corresponds to adjacency: A. "norm" corresponds to '
                          'normalized adjacency, where for D_ii = sum_j A_ij, we have: D^{-1/2} A D^{-1/2} for '
@@ -42,8 +45,9 @@ if __name__ == '__main__':
     g_norm, g_shift = GRAPH_DICT[args.graphs]
 
     S_prev = torch.inf
+    edges = data.edge_index.to(device) if args.gpu_reduction else data.edge_index
     for m in range(1, args.max_iter_power+1):
         with torch.no_grad():
-            S = sparse_svd((args.datasets, data.edge_index), g_norm, g_shift, args.n_vecs, 2**m)[1]
+            S = sparse_svd((args.datasets, edges), g_norm, g_shift, args.n_vecs, 2**m)[1]
             print(f'niters {2**m}, l1 err:', torch.linalg.norm(S - S_prev, ord=1))
             S_prev = S
