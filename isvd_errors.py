@@ -45,6 +45,7 @@ if __name__ == '__main__':
     g_norm, g_shift = GRAPH_DICT[args.graphs]
 
     S_prev = torch.inf
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     edges = data.edge_index.to(device) if args.gpu_reduction else data.edge_index
     for m in range(1, args.max_iter_power+1):
         with torch.no_grad():
