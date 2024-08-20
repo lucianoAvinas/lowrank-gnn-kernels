@@ -9,7 +9,7 @@ from tqdm import tqdm
 from pathlib import Path
 from functools import reduce
 
-from datasets import get_dataset, adjacency_svd
+from datasets import get_dataset, sparse_svd
 from optimize import evaluate_model, evaluate_params
 from kernels import sobolev_cmpct, sobolev_reals, gaussian_rbf, linear_reals
 
@@ -36,11 +36,14 @@ parser.add_argument('--csbm_params', type=float, nargs=3,
                     help='Sets (p,q)-CSBM parameters (a,b,cls_sep) where p=a(log n)/n, q=b(log n)/n,'
                          'and cls_sep is mean separation between cluster features.')
 
-parser.add_argument('--reduction_range', type=int, default=(0,19,20), nargs=3,
-                    help='Expects three arguments non-negative integers, ex: "--reduction_range a b c", '
-                         'with "a" <= "b" < "c". Roughly equivalent to "linspace(a/c, b/c, c)" where both '
-                         'are included if c > 1. Each element in range determines a rank reduction to apply '
-                         'on graph matrix.')
+parser.add_argument('--n_vecs', type=int, nargs='+',
+                    help='Number of vectors to use spectral decomposition.')
+
+parser.add_argument('--svd_iters', type=int, default=2,
+                    help='Number of iterations for low rank svd reduction.')
+
+parser.add_argument('--gpu_reduction', action='store_true',
+                    help='Run svd reduction on GPU. May be memory intensive for large graphs.')
 
 parser.add_argument('--datasets', type=str, default=DATA_NAMES, nargs='+',
                     help='Names of graph datasets to test and sweep over.')
@@ -94,10 +97,7 @@ def run_and_record(save_params, data, model_params, use_gamma):
 if __name__ == '__main__':
     args = parser.parse_args()
 
-    rnk_st, rnk_en, rnk_ln = args.reduction_range
-    rank_steps = list(range(rnk_st, rnk_en+1))
-
-    all_options = (rank_steps, args.datasets, args.masks, args.models, args.graphs, args.kernels)
+    all_options = (args.n_vecs, args.datasets, args.masks, args.models, args.graphs, args.kernels)
 
     save_name = Path('sweep_results') / f'{args.save_name}.nc'
 
@@ -109,8 +109,8 @@ if __name__ == '__main__':
 
     except FileNotFoundError:
         result_xr = xr.DataArray(np.full([len(opt) for opt in all_options] + [2, 10], np.nan), 
-                                 dims=('rank', 'data', 'mask', 'model', 'graph', 'kernel', 'result', 'split'),
-                                 coords=dict(rank=rank_steps, data=args.datasets, mask=args.masks, model=args.models, 
+                                 dims=('nvecs', 'data', 'mask', 'model', 'graph', 'kernel', 'result', 'split'),
+                                 coords=dict(nvecs=args.n_vecs, data=args.datasets, mask=args.masks, model=args.models, 
                                              graph=args.graphs, kernel=args.kernels,result=['val', 'test'], 
                                              split=list(range(10))))
         
@@ -119,7 +119,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     for opt_tuple in tqdm(itertools.product(*all_options), total=N_total):
-        i, data_nm, mask_type, model_type, graph_type, kern_nm = opt_tuple
+        nvec, data_nm, mask_type, model_type, graph_type, kern_nm = opt_tuple
 
         if data_nm == 'csbm':
             if args.csbm_params is None:
@@ -128,21 +128,23 @@ if __name__ == '__main__':
                 a,b,cls_sep = args.csbm_params
                 data_nm = f'{data_nm}_{a}_{b}_{cls_sep}'
 
-        pct = 1.0 - i/rnk_ln
         g_norm, g_shift = GRAPH_DICT[graph_type]
-
         new_data = last_opts[1] != data_nm or last_opts[2] != mask_type
         if new_data:    
-            data = get_dataset(data_nm, mask_type).to(device)
+            data = get_dataset(data_nm, mask_type)
 
-            X,y = data.x, data.y
+            X,y = data.x.to(device), data.y.to(device)
             n_feats = X.shape[1]
             n_out = len(y.unique())
-            data_mask = (data.train_mask.T, data.val_mask.T, data.test_mask.T)
+            data_mask = (data.train_mask.T.to(device), data.val_mask.T.to(device), 
+                         data.test_mask.T.to(device))
 
-        new_graph = last_opts[0] != i or last_opts[1] != data_nm or last_opts[4] != graph_type
+        new_graph = last_opts[0] != nvec or last_opts[1] != data_nm or last_opts[4] != graph_type
         if new_graph:
-            A, (U,M,Vh) = adjacency_svd((data_nm, data.edge_index), g_norm, g_shift, pct)
+            edges = data.edge_index.to(device) if args.gpu_reduction else data.edge_index
+            U,M,Vh = sparse_svd((data_nm, edges), g_norm, g_shift, nvec, args.svd_iters)
+
+            U,M,Vh = U.to(device), M.to(device), Vh.to(device)
 
         save_params = (result_xr, opt_tuple, save_name)
 
@@ -151,7 +153,8 @@ if __name__ == '__main__':
                 run_and_record(save_params, (X, y, data_mask, None), (n_feats, n_out, None, None), False)
         elif model_type == 'adj':
             if kern_nm == args.kernels[0]:
-                run_and_record(save_params, (A @ X, y, data_mask, None), (n_feats, n_out, None, None), False)
+                AX  = U @ (M * (Vh @ X))
+                run_and_record(save_params, (AX, y, data_mask, None), (n_feats, n_out, None, None), False)
         elif model_type == 'free':
             if kern_nm == args.kernels[0]:
                 run_and_record(save_params, (X, y, data_mask, None), (n_feats, n_out, U, Vh), False)

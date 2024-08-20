@@ -7,22 +7,6 @@ from math import log
 from pathlib import Path
 
 
-def get_squirrel_RDPG(g_noise, f_noise):
-    data = torch_geometric.datasets.WikipediaNetwork('graph_data', 'squirrel')[0]
-
-    n = len(data.y)
-    d = 2000
-
-    U, S, V = torch.svd_lowrank(torch_geometric.utils.to_dense_adj(data.edge_index).squeeze(), d)
-
-    P = torch.clip((U * S) @ V.T + g_noise * torch.randn(n,n), 0, 1)
-    P.fill_diagonal_(0)
-
-    data.edge_index = (torch.rand((n,n)) < P).nonzero().t().contiguous()
-    data.x = torch.logical_xor(data.x, torch.rand(data.x.shape) < f_noise).float()
-
-    return data
-
 def get_dataset(dataset_nm, mask_type='geom_gcn'):
     mask_type = mask_type.lower()
     dataset_nm = dataset_nm.lower()
@@ -36,6 +20,8 @@ def get_dataset(dataset_nm, mask_type='geom_gcn'):
     elif dataset_nm in ['cornell', 'texas', 'wisconsin']:
         data = torch_geometric.datasets.WebKB('graph_data', dataset_nm)[0]
         data.edge_index = torch_geometric.utils.to_undirected(data.edge_index)
+    elif dataset_nm in ['penn94', 'reed98', 'amherst41', 'cornell5', 'johnshopkins55', 'genius']:
+        data = torch_geometric.datasets.LINKXDataset('graph_data', dataset_nm)[0]
     elif 'csbm' in dataset_nm:
         if mask_type == 'geom_gcn':
             raise ValueError('CSBM data does not have pre-defined split.')
@@ -55,10 +41,6 @@ def get_dataset(dataset_nm, mask_type='geom_gcn'):
                                                                     num_channels=1, n_clusters_per_class=1,
                                                                     class_sep=cls_sep)[0]
         data.x = x[data.y, torch.arange(2*n)]
-    elif 'rdpg' in dataset_nm:
-        _, g_noise, f_noise = dataset_nm.split('_')
-        g_noise,f_noise = float(g_noise), float(f_noise)
-        data = get_squirrel_RDPG(g_noise, f_noise)
     else:
         raise NotImplementedError(f'Dataset {dataset_nm} not yet implemented')
 
@@ -163,3 +145,64 @@ def adjacency_svd(edge_data, norm, shift, pct):
         A = U @ torch.diag(M) @ Vh
 
     return A, (U, M, Vh)
+
+
+def sparse_normalize(A, norm, shift, is_symm):
+    n = A.shape[0]
+    D = torch.mv(A, torch.ones(n))
+
+    if norm:
+        mask = (D != 0)
+        Dinv = torch.ones_like(D)
+
+        if is_symm:
+            Dinv[mask] = 1/torch.sqrt(D[mask])
+            Dinv = torch.sparse.spdiags(Dinv, torch.zeros(1, dtype=int), A.shape)
+
+            A = torch.sparse.mm(Dinv, torch.sparse.mm(A, Dinv))
+        else:
+            Dinv[mask] = 1/D[mask]
+            Dinv = torch.sparse.spdiags(Dinv, torch.zeros(1, dtype=int), A.shape)
+
+            A = torch.sparse.mm(Dinv, A)
+
+    if shift:
+        if norm:
+            D = torch.sparse.spdiags(torch.ones(n), torch.zeros(1, dtype=int), A.shape)
+        else:
+            D = torch.sparse.spdiags(D, torch.zeros(1, dtype=int), A.shape)
+    else:
+        D = None
+
+    return A, D
+
+
+def sparse_svd(edge_data, norm, shift, q, niters, seed=45445):
+    data_nm, edges = edge_data
+    A = torch_geometric.utils.to_torch_sparse_tensor(edges).coalesce()
+
+    n = A.shape[0]
+    if 0 < q <= 1:
+        q = int(n * q)
+
+    is_symm = torch.equal(A.indices(), A.T.coalesce().indices())
+
+    device = A.device
+    A,D = sparse_normalize(A.cpu(), norm, shift, is_symm)
+    
+    A = A.to(device)
+    D = D.to(device) if D is not None else D
+
+    torch.manual_seed(seed)
+    spec_path = Path('spectral_data')
+
+    spec_path = spec_path / f'{data_nm}_{q}_{niters}{"_symm" if norm else ""}{"_shift" if shift else ""}.pt'
+
+    try:
+        svd_dict = torch.load(spec_path)
+        U, S, V = svd_dict['U'], svd_dict['S'], svd_dict['V']
+    except FileNotFoundError:
+        U, S, V = torch.svd_lowrank(A, M=D, q=q, niter=niters)
+        torch.save(dict(U=U.cpu(), S=S.cpu(), V=V.cpu()), spec_path)
+
+    return U, S, V.T
