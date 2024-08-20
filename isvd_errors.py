@@ -49,6 +49,6 @@ if __name__ == '__main__':
     edges = data.edge_index.to(device) if args.gpu_reduction else data.edge_index
     for m in range(1, args.max_iter_power+1):
         with torch.no_grad():
-            S = sparse_svd((args.datasets, edges), g_norm, g_shift, args.n_vecs, 2**m)[1]
+            S = sparse_svd((args.datasets, edges), g_norm, g_shift, args.n_vecs, 2**m)[1].to(device)
             print(f'niters {2**m}, l1 err:', torch.linalg.norm(S - S_prev, ord=1))
             S_prev = S
