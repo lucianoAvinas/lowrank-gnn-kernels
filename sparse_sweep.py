@@ -159,7 +159,7 @@ if __name__ == '__main__':
         save_params = (result_xr, opt_tuple, save_name)
 
         if model_type == 'linear':
-            if i == rank_steps[0] and graph_type == args.graphs[0] and kern_nm == args.kernels[0]:
+            if nvec == args.n_vecs[0] and graph_type == args.graphs[0] and kern_nm == args.kernels[0]:
                 run_and_record(save_params, (X, y, data_mask, None), (n_feats, n_out, None, None), False)
         elif model_type == 'adj':
             if kern_nm == args.kernels[0]:
