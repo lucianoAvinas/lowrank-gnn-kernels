@@ -147,9 +147,11 @@ def adjacency_svd(edge_data, norm, shift, pct):
     return A, (U, M, Vh)
 
 
-def sparse_normalize(A, norm, shift, is_symm):
+def sparse_normalize(A, norm, shift):
     n = A.shape[0]
     D = torch.mv(A, torch.ones(n))
+    
+    is_symm = torch.equal(A.indices(), A.T.coalesce().indices())
 
     if norm:
         mask = (D != 0)
@@ -185,10 +187,8 @@ def sparse_svd(edge_data, norm, shift, q, niters, seed=45445):
     if 0 < q <= 1:
         q = int(n * q)
 
-    is_symm = torch.equal(A.indices(), A.T.coalesce().indices())
-
     device = A.device
-    A,D = sparse_normalize(A.cpu(), norm, shift, is_symm)
+    A,D = sparse_normalize(A.cpu(), norm, shift)
     
     A = A.to(device)
     D = D.to(device) if D is not None else D

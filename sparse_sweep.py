@@ -4,13 +4,14 @@ import argparse
 import itertools
 import numpy as np
 import xarray as xr
+import torch_geometric
 
 from tqdm import tqdm
 from pathlib import Path
 from functools import reduce
 
-from datasets import get_dataset, sparse_svd
 from optimize import evaluate_model, evaluate_params
+from datasets import get_dataset, sparse_svd, sparse_normalize
 from kernels import sobolev_cmpct, sobolev_reals, gaussian_rbf, linear_reals
 
 
@@ -141,10 +142,16 @@ if __name__ == '__main__':
 
         new_graph = last_opts[0] != nvec or last_opts[1] != data_nm or last_opts[4] != graph_type
         if new_graph:
-            edges = data.edge_index.to(device) if args.gpu_reduction else data.edge_index
-            U,M,Vh = sparse_svd((data_nm, edges), g_norm, g_shift, nvec, args.svd_iters)
+            if nvec > 0:
+                edges = data.edge_index.to(device) if args.gpu_reduction else data.edge_index
+                U,M,Vh = sparse_svd((data_nm, edges), g_norm, g_shift, nvec, args.svd_iters)
 
-            U,M,Vh = U.to(device), M.to(device), Vh.to(device)
+                U,M,Vh = U.to(device), M.to(device), Vh.to(device)
+                AX = U @ (M[:,None] * (Vh @ X))
+            else:
+                A = sparse_normalize(torch_geometric.utils.to_torch_sparse_tensor(data.edge_index).coalesce(), 
+                                     g_norm, g_shift)[0]
+                AX = torch.sparse.mm(A, X.cpu()).to(device)
 
         save_params = (result_xr, opt_tuple, save_name)
 
@@ -153,7 +160,6 @@ if __name__ == '__main__':
                 run_and_record(save_params, (X, y, data_mask, None), (n_feats, n_out, None, None), False)
         elif model_type == 'adj':
             if kern_nm == args.kernels[0]:
-                AX  = U @ (M * (Vh @ X))
                 run_and_record(save_params, (AX, y, data_mask, None), (n_feats, n_out, None, None), False)
         elif model_type == 'free':
             if kern_nm == args.kernels[0]:
