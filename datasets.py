@@ -7,7 +7,7 @@ from math import log
 from pathlib import Path
 
 
-def get_dataset(dataset_nm, mask_type='geom_gcn'):
+def get_dataset(dataset_nm, mask_type='geom_gcn', n_splits=10):
     mask_type = mask_type.lower()
     dataset_nm = dataset_nm.lower()
 
@@ -48,8 +48,8 @@ def get_dataset(dataset_nm, mask_type='geom_gcn'):
     torch.manual_seed(10)
 
     if mask_type == 'random':
-        data.train_mask, data.val_mask, data.test_mask = torch.zeros((3,n,10), dtype=bool)
-        for i in range(10):
+        data.train_mask, data.val_mask, data.test_mask = torch.zeros((3,n,n_splits), dtype=bool)
+        for i in range(n_splits):
             inds = torch.randperm(n)
             data.train_mask[inds[:int(0.6*n)],i] = True
             data.val_mask[inds[int(0.6*n):int(0.8*n)],i] = True
@@ -59,9 +59,9 @@ def get_dataset(dataset_nm, mask_type='geom_gcn'):
         C = len(data.y.unique())
         bnd = int(n * 0.6 / C)
         all_inds = [(data.y == c).nonzero() for c in range(C)]
-        data.train_mask, data.val_mask, data.test_mask = torch.zeros((3,n,10), dtype=bool)
+        data.train_mask, data.val_mask, data.test_mask = torch.zeros((3,n,n_splits), dtype=bool)
 
-        for i in range(10):
+        for i in range(n_splits):
             eval_inds = []
             for c in range(C):
                 cls_inds = all_inds[c]
@@ -150,7 +150,7 @@ def adjacency_svd(edge_data, norm, shift, pct):
 def sparse_normalize(A, norm, shift):
     n = A.shape[0]
     D = torch.mv(A, torch.ones(n))
-    
+
     is_symm = torch.equal(A.indices(), A.T.coalesce().indices())
 
     if norm:

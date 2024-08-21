@@ -46,6 +46,9 @@ parser.add_argument('--svd_iters', type=int, default=2,
 parser.add_argument('--gpu_reduction', action='store_true',
                     help='Run svd reduction on GPU. May be memory intensive for large graphs.')
 
+parser.add_argument('--n_splits', type=int, default=10,
+                    help='Number of train-test splits.')
+
 parser.add_argument('--datasets', type=str, default=DATA_NAMES, nargs='+',
                     help='Names of graph datasets to test and sweep over.')
 
@@ -109,11 +112,11 @@ if __name__ == '__main__':
             result_xr = xr.load_dataset(save_name)['__xarray_dataarray_variable__']
 
     except FileNotFoundError:
-        result_xr = xr.DataArray(np.full([len(opt) for opt in all_options] + [2, 10], np.nan), 
+        result_xr = xr.DataArray(np.full([len(opt) for opt in all_options] + [2, args.n_splits], np.nan), 
                                  dims=('nvecs', 'data', 'mask', 'model', 'graph', 'kernel', 'result', 'split'),
                                  coords=dict(nvecs=args.n_vecs, data=args.datasets, mask=args.masks, model=args.models, 
                                              graph=args.graphs, kernel=args.kernels,result=['val', 'test'], 
-                                             split=list(range(10))))
+                                             split=list(range(args.n_splits))))
         
     last_opts = (None,) * len(all_options)
     N_total = reduce(lambda u,v: u * len(v), all_options, 1)
@@ -132,7 +135,7 @@ if __name__ == '__main__':
         g_norm, g_shift = GRAPH_DICT[graph_type]
         new_data = last_opts[1] != data_nm or last_opts[2] != mask_type
         if new_data:    
-            data = get_dataset(data_nm, mask_type)
+            data = get_dataset(data_nm, mask_type, args.n_splits)
 
             X,y = data.x.to(device), data.y.to(device)
             n_feats = X.shape[1]
