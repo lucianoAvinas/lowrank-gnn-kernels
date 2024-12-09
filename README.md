@@ -1,4 +1,4 @@
-## "Simplifying GNN Performance with Low Rank Kernel Models" Implementation
+## "Simple GNNs with Low Rank Non-parametric Aggregators" Implementation
 Paper link: [https://arxiv.org/abs/2310.05250](https://arxiv.org/abs/2310.05250)
 
 Dependencies: `torch`, `optuna`, `numpy`, `xarray`, `torch_geometric`, `tqdm`
